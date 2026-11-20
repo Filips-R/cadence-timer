@@ -150,7 +150,22 @@ async function float(){
     if(video.webkitSupportsPresentationMode?.('picture-in-picture'))video.webkitSetPresentationMode('picture-in-picture');
     else if(document.pictureInPictureEnabled&&video.requestPictureInPicture)await video.requestPictureInPicture();
     else throw Error('This browser did not offer Picture in Picture for the timer video.');
-  }catch(e){say(e.name==='Error'?e.message:'Picture in Picture was declined ('+e.name+').')}
+  }catch(e){
+    const standalone = navigator.standalone === true || matchMedia('(display-mode: standalone)').matches;
+    const appleMobile = navigator.standalone === true || /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    if (standalone && appleMobile && (e.name === 'NotSupportedError' || e.message === 'This browser did not offer Picture in Picture for the timer video.')) {
+      let help = app.querySelector('#pip-help');
+      if (!help) {
+        help = document.createElement('p');
+        help.id = 'pip-help';
+        help.setAttribute('role', 'status');
+        app.querySelector('[data-action="float"]').after(help);
+      }
+      help.textContent = 'This iPhone declined PiP from the Home Screen app. Start Cadence in your browser for a floating timer. On iOS 26, use Add to Home Screen with “Open as Web App” switched off for a browser shortcut.';
+    } else {
+      say(e.name==='Error'?e.message:'Picture in Picture was declined ('+e.name+').');
+    }
+  }
 }
 function finish(done){session=null;persist();cancelAnimationFrame(frame);wake?.release();cleanMini();screen('done');app.innerHTML='<h1>'+(done?'Workout complete':'Workout ended')+'</h1>'+btn('home','Back to workouts');if(done)beep(780,true)}
 app.onclick=async e=>{const b=e.target.closest('[data-action]');if(!b)return;const cmd=b.dataset.action,i=Number(b.closest('[data-i]')?.dataset.i),w=workouts[i];switch(cmd){
