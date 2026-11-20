@@ -1,0 +1,22 @@
+{
+  "name": "Cadence Interval Timer",
+  "short_name": "Cadence",
+  "id": "./",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "theme_color": "#faf7f1",
+  "background_color": "#faf7f1",
+  "icons": [
+    {
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "src": "data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22192%22%20height%3D%22192%22%20viewBox%3D%220%200%20100%20100%22%3E%3Crect%20width%3D%22100%22%20height%3D%22100%22%20fill%3D%22%23f1c8ae%22%2F%3E%3Ccircle%20cx%3D%2250%22%20cy%3D%2250%22%20r%3D%2230%22%20stroke%3D%22%23344237%22%20stroke-width%3D%2210%22%20stroke-dasharray%3D%22154%2035%22%20fill%3D%22none%22%2F%3E%3C%2Fsvg%3E"
+    },
+    {
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "src": "data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22512%22%20height%3D%22512%22%20viewBox%3D%220%200%20100%20100%22%3E%3Crect%20width%3D%22100%22%20height%3D%22100%22%20fill%3D%22%23f1c8ae%22%2F%3E%3Ccircle%20cx%3D%2250%22%20cy%3D%2250%22%20r%3D%2230%22%20stroke%3D%22%23344237%22%20stroke-width%3D%2210%22%20stroke-dasharray%3D%22154%2035%22%20fill%3D%22none%22%2F%3E%3C%2Fsvg%3E"
+    }
+  ]
+}
