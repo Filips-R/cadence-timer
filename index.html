@@ -26,11 +26,11 @@ function home(){screen('home');app.innerHTML='<div class="row"><h1>Workouts</h1>
 const field=(label,key,value,type='number')=>'<label>'+label+'<input data-key="'+key+'" type="'+type+'" value="'+safe(value??'')+'"></label>';
 function editor(){screen('editor');app.innerHTML=btn('home','‹ Workouts')+'<h1>'+(quick?'Quick start':'Workout editor')+'</h1>'+field('Workout name','name',edit.name,'text')+'<div class="grid">'+field('Preparation (sec)','prep',edit.prep)+field('Cycles','cycles',edit.cycles)+'</div>'+field('Rest between cycles (sec, optional)','cycleRest',edit.cycleRest)+'<h2>Exercises</h2>'+edit.exercises.map((e,i)=>'<section data-i="'+i+'" class="panel"><h3>Exercise '+(i+1)+'</h3>'+field('Name','name',e.name,'text')+'<div class="grid">'+field('Work (sec)','work',e.work)+field('Rest (sec)','rest',e.rest)+'</div><div class="buttons">'+btn('up','↑','','aria-label="Move up" '+(i?'':'disabled'))+btn('down','↓','','aria-label="Move down" '+(i===edit.exercises.length-1?'disabled':''))+btn('remove','Remove','',edit.exercises.length===1?'disabled':'')+'</div></section>').join('')+'<div class="buttons">'+btn('add','＋ Add exercise')+btn(quick?'begin':'save',quick?'Start timer':'Save workout','play')+'</div>'}
 function stash(){if(!quick){draft=structuredClone(edit);put('draft',draft)}}
-function settings(){screen('settings');app.innerHTML=btn('home','‹ Workouts')+'<h1>Settings</h1><section class="panel"><h2>Sound & cues</h2>'+[['volume','Beep volume',0,100,1,'%'],['length','Beep length',120,800,10,' ms']].map(([k,label,min,max,step,u])=>'<label>'+label+' · <output id="'+k+'">'+prefs[k]+u+'</output><input type="range" data-pref="'+k+'" min="'+min+'" max="'+max+'" step="'+step+'" value="'+prefs[k]+'"></label>').join('')+btn('preview','Preview sound')+[['sound','Sounds'],['half','Halfway double beep during work'],['count','Final three countdown beeps'],['vibrate','Vibration where supported'],['dark','Dark workout library']].map(([k,l])=>'<label><input type="checkbox" data-pref="'+k+'" '+(prefs[k]?'checked':'')+'> '+l+'</label>').join('')+'</section><section class="panel"><h2>Backup</h2><p>Browser storage can be cleared. Save a copy of your workouts and preferences.</p>'+btn('export','Export JSON')+'<label>Import Cadence backup<input id="import" type="file" accept=".json,application/json"></label></section><small id="offline">'+(offline?'Ready for offline use':'Preparing offline access')+'</small>'}
-app.oninput=e=>{const el=e.target,key=el.dataset.key,k=el.dataset.pref;if(k){prefs[k]=el.type==='checkbox'?el.checked:Number(el.value);put('prefs',prefs);if($('#'+k))$('#'+k).textContent=prefs[k]+(k==='volume'?'%':' ms');if(k==='dark')settings()}if(key){const row=el.closest('[data-i]');(row?edit.exercises[Number(row.dataset.i)]:edit)[key]=el.type==='number'?(el.value===''?(key==='cycleRest'?null:''):Number(el.value)):el.value;stash()}};
+function settings(){screen('settings');app.innerHTML=btn('home','‹ Workouts')+'<h1>Settings</h1><section class="panel"><h2>Sound & cues</h2>'+[['volume','Beep volume',0,100,1,'%'],['length','Beep length',120,800,10,' ms']].map(([k,label,min,max,step,u])=>'<label>'+label+' · <output id="'+k+'">'+prefs[k]+u+'</output><input type="range" data-pref="'+k+'" min="'+min+'" max="'+max+'" step="'+step+'" value="'+prefs[k]+'"></label>').join('')+btn('preview','Preview sound')+[['sound','Sounds'],...('audioSession' in navigator?[['mediaAudio','Play cues in Silent mode (may interrupt other audio)']]:[]),['half','Halfway double beep during work'],['count','Final three countdown beeps'],['vibrate','Vibration where supported'],['dark','Dark workout library']].map(([k,l])=>'<label><input type="checkbox" data-pref="'+k+'" '+(prefs[k]?'checked':'')+'> '+l+'</label>').join('')+'</section><section class="panel"><h2>Backup</h2><p>Browser storage can be cleared. Save a copy of your workouts and preferences.</p>'+btn('export','Export JSON')+'<label>Import Cadence backup<input id="import" type="file" accept=".json,application/json"></label></section><small id="offline">'+(offline?'Ready for offline use':'Preparing offline access')+'</small>'}
+app.oninput=e=>{const el=e.target,key=el.dataset.key,k=el.dataset.pref;if(k){prefs[k]=el.type==='checkbox'?el.checked:Number(el.value);put('prefs',prefs);if($('#'+k))$('#'+k).textContent=prefs[k]+(k==='volume'?'%':' ms');if(k==='mediaAudio')mediaAudio();if(k==='dark')settings()}if(key){const row=el.closest('[data-i]');(row?edit.exercises[Number(row.dataset.i)]:edit)[key]=el.type==='number'?(el.value===''?(key==='cycleRest'?null:''):Number(el.value)):el.value;stash()}};
 function importOne(w,v){if(v===2)return w;if(!integer(w.rounds,1)||!integer(w.sets,1))throw Error();return {...w,cycles:w.rounds*w.sets,cycleRest:null,legacyBoundary:w.sets>1&&integer(w.setRest,0)?{every:w.rounds,rest:w.setRest}:undefined}}
-app.onchange=async e=>{if(e.target.id!=='import'||!e.target.files[0])return;try{const data=JSON.parse(await e.target.files[0].text());if(![1,2].includes(data.version)||!Array.isArray(data.workouts))throw Error();const incoming=data.workouts.map(w=>importOne(w,data.version));if(!incoming.every(valid))throw Error();const merged=new Map(workouts.map(w=>[w.id,w]));for(const w of incoming){if(merged.has(w.id)&&JSON.stringify(merged.get(w.id))!==JSON.stringify(w))w.id=id();merged.set(w.id,w)}workouts=[...merged.values()];put('workouts',workouts);const p=data.preferences||{};for(const k of ['sound','half','count','vibrate','dark'])if(typeof p[k]==='boolean')prefs[k]=p[k];if(p.theme==='Dark')prefs.dark=true;for(const [k,min,max] of [['volume',0,100],['length',120,800]])if(Number.isInteger(p[k])&&p[k]>=min&&p[k]<=max)prefs[k]=p[k];put('prefs',prefs);settings();say('Backup imported')}catch{say('Invalid Cadence backup. Check the file and try again.')}};
-function audio(){try{ctx??=new (window.AudioContext||window.webkitAudioContext)();return ctx.resume()}catch{return Promise.resolve()}}
+app.onchange=async e=>{if(e.target.id!=='import'||!e.target.files[0])return;try{const data=JSON.parse(await e.target.files[0].text());if(![1,2].includes(data.version)||!Array.isArray(data.workouts))throw Error();const incoming=data.workouts.map(w=>importOne(w,data.version));if(!incoming.every(valid))throw Error();const merged=new Map(workouts.map(w=>[w.id,w]));for(const w of incoming){if(merged.has(w.id)&&JSON.stringify(merged.get(w.id))!==JSON.stringify(w))w.id=id();merged.set(w.id,w)}workouts=[...merged.values()];put('workouts',workouts);const p=data.preferences||{};for(const k of ['sound','half','count','vibrate','dark','mediaAudio'])if(typeof p[k]==='boolean')prefs[k]=p[k];if(p.theme==='Dark')prefs.dark=true;for(const [k,min,max] of [['volume',0,100],['length',120,800]])if(Number.isInteger(p[k])&&p[k]>=min&&p[k]<=max)prefs[k]=p[k];put('prefs',prefs);settings();say('Backup imported')}catch{say('Invalid Cadence backup. Check the file and try again.')}};
+function audio(){mediaAudio();try{ctx??=new (window.AudioContext||window.webkitAudioContext)();return ctx.resume()}catch{return Promise.resolve()}}
 function beep(freq,double=false){if(!prefs.sound||!prefs.volume||ctx?.state!=='running')return;const d=prefs.length/1000*(double?.58:1),level=.75*(prefs.volume/100)**1.6;for(let n=0;n<(double?2:1);n++){const at=ctx.currentTime+n*(d+.075),o=ctx.createOscillator(),g=ctx.createGain();o.frequency.value=freq;g.gain.setValueAtTime(0,at);g.gain.linearRampToValueAtTime(level,at+.018);g.gain.setValueAtTime(level,at+d*.62);g.gain.exponentialRampToValueAtTime(.0001,at+d);o.connect(g).connect(ctx.destination);o.start(at);o.stop(at+d+.01)}}
 const colors={Prepare:'#f1db92',Work:'#eba89d',Rest:'#b6d8e9'};
 const elapsed=()=>session.offset+(session.since===null?0:Math.max(0,Date.now()-session.since)/1000);
@@ -42,10 +42,116 @@ function live(){screen('timer');list=sequence(session.w);last=-1;lastT=-1;app.cl
 function animate(){cancelAnimationFrame(frame);if(!session||document.hidden)return;const t=elapsed(),p=list[locate(t)];if(p)$('#arc').style.strokeDashoffset=100*Math.max(0,(t-p.start)/(p.end-p.start));if(session.since!==null)frame=requestAnimationFrame(animate)}
 function tick(){if(!session)return;const t=elapsed(),i=locate(t),p=list[i],w=session.w;if(!p){finish(true);return}const paused=session.since===null,left=p.end-t;const change=i!==last;if(change){document.body.style.setProperty('--phase',colors[p.phase]);$('#name').textContent=p.phase==='Work'?w.exercises[p.i].name:p.phase==='Rest'?'Recover':'Get ready';$('#position').textContent='Exercise '+(p.i+1)+' of '+w.exercises.length+' · Cycle '+p.c+' of '+w.cycles;$('#next').textContent='Up next · '+p.next;if(!paused&&t-p.start<1){beep(p.phase==='Work'?660:p.phase==='Rest'?440:550);if(prefs.vibrate)navigator.vibrate?.(70)}}else if(!paused&&t-lastT<1.25){const mid=(p.start+p.end)/2;if(p.phase==='Work'&&prefs.half&&lastT<mid&&t>=mid)beep(840,true);else if(prefs.count&&Math.ceil(left)<=3&&Math.ceil(left)<Math.ceil(p.end-lastT))beep(510)}
 $('#phase').textContent=paused?'Paused · '+p.phase:p.phase;$('.time').textContent=fmt(Math.ceil(left));const fraction=t/list.at(-1).end;$('.track i').style.transform='scaleX('+fraction+')';$('.track').setAttribute('aria-valuenow',Math.round(fraction*100));const key=paused?'Resume':'Pause',b=$('.main');if(b.getAttribute('aria-label')!==key){b.setAttribute('aria-label',key);b.innerHTML=icon(paused?'play':'pause')}last=i;lastT=t;if(canvas)draw(p,left)}
-function draw(p,left){const g=canvas.getContext('2d');g.fillStyle=colors[p.phase];g.fillRect(0,0,400,240);g.strokeStyle='#344037';g.lineWidth=6;g.beginPath();g.arc(200,120,104,-Math.PI/2,Math.PI*2*left/(p.end-p.start)-Math.PI/2);g.stroke();g.textAlign='center';g.fillStyle='#252c2d';g.font='24px sans-serif';g.fillText(session.since===null?'Paused':p.phase,200,101);g.font='54px Georgia';g.fillText(fmt(Math.ceil(left)),200,158)}
+function draw(p,left,surface=canvas,label=session.since===null?'Paused':p.phase){const g=surface.getContext('2d');g.fillStyle=colors[p.phase];g.fillRect(0,0,400,240);g.strokeStyle='#344037';g.lineWidth=6;g.beginPath();g.arc(200,120,104,-Math.PI/2,Math.PI*2*left/(p.end-p.start)-Math.PI/2);g.stroke();g.textAlign='center';g.fillStyle='#252c2d';g.font='24px sans-serif';g.fillText(label,200,101);g.font='54px Georgia';g.fillText(fmt(Math.ceil(left)),200,158)}
+// Build a silent, single-track MP4. Each encoded sample is a one-second IDR frame.
+function countdownMovie(samples, config, width, height) {
+  const bytes = (...values) => Uint8Array.of(...values);
+  const word = n => bytes(n >>> 8, n);
+  const long = n => bytes(n >>> 24, n >>> 16, n >>> 8, n);
+  const zeros = n => new Uint8Array(n);
+  const str = s => new TextEncoder().encode(s);
+  function join(...parts) {
+    const result = new Uint8Array(parts.reduce((sum, p) => sum + p.length, 0));
+    let offset = 0;
+    for (const part of parts) { result.set(part, offset); offset += part.length; }
+    return result;
+  }
+  const box = (type, ...parts) => join(long(8 + parts.reduce((sum,p)=>sum+p.length,0)), str(type), ...parts);
+  const full = (type, flags, ...parts) => box(type,long(flags),...parts);
+  const matrix = join(...[65536,0,0,0,65536,0,0,0,1073741824].map(long));
+  const fileType = box('ftyp',str('isom'),long(512),str('isomiso2avc1mp41'));
+  const duration = long(samples.length);
+  const clock = join(zeros(8),long(1),duration);
+  const movieHeader = full('mvhd',0,clock,long(65536),word(256),zeros(10),matrix,zeros(24),long(2));
+  const trackHeader = full('tkhd',7,zeros(8),long(1),zeros(4),duration,zeros(16),matrix,long(width*65536),long(height*65536));
+  const description = box('avc1',zeros(6),word(1),zeros(16),word(width),word(height),long(72*65536),long(72*65536),zeros(4),word(1),zeros(32),word(24),word(65535),box('avcC',config));
+  const sizeTable = new Uint8Array(samples.length * 4);
+  const sizes = new DataView(sizeTable.buffer);
+  samples.forEach((s,i)=>sizes.setUint32(i*4,s.length));
+  const table = box('stbl',full('stsd',0,long(1),description),
+    full('stts',0,long(1),duration,long(1)),full('stsc',0,long(1),long(1),duration,long(1)),
+    full('stsz',0,long(0),duration,sizeTable),full('stco',0,long(1),long(fileType.length+8)));
+  const info = box('minf',full('vmhd',1,zeros(8)),box('dinf',full('dref',0,long(1),full('url ',1))),table);
+  const media = box('mdia',full('mdhd',0,clock,word(21956),word(0)),full('hdlr',0,long(0),str('vide'),zeros(12),str('Cadence\0')),info);
+  const movie = box('moov',movieHeader,box('trak',trackHeader,media));
+  const dataSize = samples.reduce((sum,s)=>sum+s.length,0);
+  return new Blob([fileType,long(dataSize+8),str('mdat'),...samples,movie],{type:'video/mp4'});
+}
 const video=$('#video');
-function cleanMini(){if(document.pictureInPictureElement===video)document.exitPictureInPicture().catch(()=>{});if(video.webkitPresentationMode==='picture-in-picture')video.webkitSetPresentationMode('inline');stream?.getTracks().forEach(t=>t.stop());stream=null;video.pause();video.srcObject=null;canvas=null}
-async function float(){try{if(!stream){canvas=document.createElement('canvas');canvas.width=400;canvas.height=240;tick();stream=canvas.captureStream(10);video.srcObject=stream;await video.play()}if(document.pictureInPictureEnabled&&video.requestPictureInPicture)await video.requestPictureInPicture();else if(video.webkitSupportsPresentationMode?.('picture-in-picture'))video.webkitSetPresentationMode('picture-in-picture');else throw Error()}catch{cleanMini();say('Floating timer unavailable here. Try opening this page in a browser tab.')}}
+let movieURL='', preparing=false, miniReady=false, miniToken=0;
+function miniButton(label, disabled=false) {
+  const b=app.querySelector('[data-action="float"]');
+  if(b){b.textContent=label;b.disabled=disabled}
+}
+function mediaAudio(){
+  if('audioSession' in navigator)try{navigator.audioSession.type=prefs.mediaAudio?'playback':'auto'}catch{}
+}
+function cleanMini(){
+  miniToken++; preparing=false; miniReady=false;
+  if(document.pictureInPictureElement===video)document.exitPictureInPicture().catch(()=>{});
+  if(video.webkitPresentationMode==='picture-in-picture')try{video.webkitSetPresentationMode('inline')}catch{}
+  stream?.getTracks().forEach(t=>t.stop());stream=null;canvas=null;
+  video.pause();video.srcObject=null;video.removeAttribute('src');video.load();
+  if(movieURL)URL.revokeObjectURL(movieURL);movieURL='';
+}
+async function encodeMovie(token) {
+  if(!window.VideoEncoder || !window.VideoFrame || list.at(-1).end>7200)return null;
+  const settings={codec:'avc1.42E01E',width:400,height:240,framerate:1,bitrate:160000,latencyMode:'realtime',avc:{format:'avc'}};
+  if(!(await VideoEncoder.isConfigSupported(settings)).supported)return null;
+  const surface=document.createElement('canvas');surface.width=400;surface.height=240;
+  const samples=[]; let config,error,bytes=0;
+  const encoder=new VideoEncoder({error:e=>{error=e},output:(chunk,meta)=>{
+    if(meta?.decoderConfig?.description)config=new Uint8Array(meta.decoderConfig.description);
+    const data=new Uint8Array(chunk.byteLength);chunk.copyTo(data);samples.push(data);bytes+=data.length;
+  }});
+  try {
+    encoder.configure(settings);
+    const end=list.at(-1).end;
+    for(let t=0;t<end;t++){
+      if(token!==miniToken)throw Error('Workout changed');
+      const p=list[locate(t)];draw(p,p.end-t,surface,p.phase);
+      const frame=new VideoFrame(surface,{timestamp:t*1000000,duration:1000000});
+      try{encoder.encode(frame,{keyFrame:true})}finally{frame.close()}
+      if(t%24===23){await encoder.flush();await new Promise(r=>setTimeout(r,0));if(error)throw error;if(bytes>24000000)return null}
+    }
+    await encoder.flush();if(error)throw error;
+    return config&&samples.length===end?countdownMovie(samples,config,400,240):null;
+  }finally{if(encoder.state!=='closed')encoder.close()}
+}
+function syncMovie(){
+  if(!movieURL||!miniReady||!session)return;
+  if(Math.abs(video.currentTime-elapsed())>.35)video.currentTime=Math.min(elapsed(),video.duration||elapsed());
+  if(session.since===null)video.pause();else video.play().catch(()=>{});
+}
+async function prepareMini(){
+  const token=++miniToken;preparing=true;miniButton('Preparing timer video…',true);
+  try{
+    let blob;
+    try{blob=await encodeMovie(token)}catch{blob=null}
+    if(token!==miniToken)return;
+    if(blob){movieURL=URL.createObjectURL(blob);video.src=movieURL}
+    else{
+      canvas=document.createElement('canvas');canvas.width=400;canvas.height=240;
+      if(!canvas.captureStream)throw Error('This browser cannot create a timer video.');
+      stream=canvas.captureStream(10);video.srcObject=stream;tick();
+    }
+    await Promise.race([video.play(),new Promise((_,no)=>setTimeout(()=>no(Error('Video playback did not start.')),8000))]);
+    if(token!==miniToken)return;
+    miniReady=true;syncMovie();miniButton('Open floating timer');say('Video ready. Tap Open floating timer.');
+  }catch(e){if(token===miniToken){cleanMini();miniButton('Float timer');say('Video setup failed: '+(e.name==='Error'?e.message:e.name))}}
+  finally{if(token===miniToken)preparing=false}
+}
+async function float(){
+  if(preparing)return;
+  if(session.since===null){say('Resume the workout to float the countdown.');return}
+  if(!miniReady){await prepareMini();return}
+  try{
+    syncMovie();
+    if(video.webkitSupportsPresentationMode?.('picture-in-picture'))video.webkitSetPresentationMode('picture-in-picture');
+    else if(document.pictureInPictureEnabled&&video.requestPictureInPicture)await video.requestPictureInPicture();
+    else throw Error('This browser did not offer Picture in Picture for the timer video.');
+  }catch(e){say(e.name==='Error'?e.message:'Picture in Picture was declined ('+e.name+').')}
+}
 function finish(done){session=null;persist();cancelAnimationFrame(frame);wake?.release();cleanMini();screen('done');app.innerHTML='<h1>'+(done?'Workout complete':'Workout ended')+'</h1>'+btn('home','Back to workouts');if(done)beep(780,true)}
 app.onclick=async e=>{const b=e.target.closest('[data-action]');if(!b)return;const cmd=b.dataset.action,i=Number(b.closest('[data-i]')?.dataset.i),w=workouts[i];switch(cmd){
 case 'home':openMenu='';home();break;
@@ -57,14 +163,14 @@ case 'delete':if(confirm('Delete '+w.name+'?')){workouts.splice(i,1);put('workou
 case 'quick':case 'new':case 'edit':case 'draft':if(draft&&['edit','new'].includes(cmd)&&draft.id!==w?.id&&!confirm('Replace the unfinished draft?'))break;quick=cmd==='quick';edit=cmd==='draft'?structuredClone(draft):cmd==='edit'?structuredClone(draft?.id===w.id?draft:w):example(quick?'Quick timer':'',[quick?'Interval':'']);if(quick){edit.cycles=8;edit.exercises[0].work=20;edit.exercises[0].rest=10}editor();break;
 case 'add':case 'up':case 'down':case 'remove':{const a=edit.exercises;if(cmd==='add')a.push({...a.at(-1),name:''});else if(cmd==='remove')a.splice(i,1);else{const j=i+(cmd==='up'?-1:1);[a[i],a[j]]=[a[j],a[i]]}stash();editor();if(cmd==='add')app.querySelector('section:last-of-type input').focus();break}
 case 'begin':case 'save':if(!valid(edit)){say('Enter names, positive work times and cycles, and whole-second durations.');break}if(quick){begin(edit);break}const ix=workouts.findIndex(w=>w.id===edit.id);if(ix<0)workouts.push(edit);else workouts[ix]=edit;put('workouts',workouts);draft=null;put('draft',draft);home();break;
-case 'pause':audio();if(session.since===null){session.since=Date.now();lock()}else{session.offset=elapsed();session.since=null;wake?.release()}persist();tick();animate();break;
-case 'skip':case 'prev':{const idx=Math.max(0,locate(elapsed())+(cmd==='skip'?1:-1));session.offset=list[idx]?.start??list.at(-1).end;if(session.since!==null)session.since=Date.now();persist();tick();animate();break}
+case 'pause':audio();if(session.since===null){session.since=Date.now();lock()}else{session.offset=elapsed();session.since=null;wake?.release()}persist();tick();animate();syncMovie();break;
+case 'skip':case 'prev':{const idx=Math.max(0,locate(elapsed())+(cmd==='skip'?1:-1));session.offset=list[idx]?.start??list.at(-1).end;if(session.since!==null)session.since=Date.now();persist();tick();animate();syncMovie();break}
 case 'end':if(confirm('End this workout?'))finish(false);break;
 case 'float':await float();break;
 case 'preview':await audio();if(!prefs.sound)say('Enable sounds to preview.');else beep(660);break;
 case 'export':{const url=URL.createObjectURL(new Blob([JSON.stringify({version:2,workouts,preferences:prefs},null,2)],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download='cadence-backup.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),30000);break}
 }};
-document.addEventListener('visibilitychange',()=>{if(!document.hidden&&session){tick();animate();lock()}});
+document.addEventListener('visibilitychange',()=>{if(!document.hidden&&session){tick();animate();lock();syncMovie()}});
 if(session&&valid(session.w))live();else{session=null;home()}setInterval(tick,120);
 if('serviceWorker'in navigator)navigator.serviceWorker.register('./sw.js').then(()=>navigator.serviceWorker.ready).then(()=>{offline=true;if($('#offline'))$('#offline').textContent='Ready for offline use'}).catch(()=>say('Offline setup failed. Reopen online to retry.'));
 
