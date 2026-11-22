@@ -54,18 +54,31 @@ function settings(){screen('settings');app.innerHTML=btn('home','‹ Workouts')+
 app.oninput=e=>{const el=e.target,key=el.dataset.key,k=el.dataset.pref;if(k){prefs[k]=el.type==='checkbox'?el.checked:Number(el.value);put('prefs',prefs);if($('#'+k))$('#'+k).textContent=prefs[k]+(k==='volume'?'%':' ms');if(k==='mediaAudio')mediaAudio();if(k==='dark')settings()}if(key){const row=el.closest('[data-i]');(row?edit.exercises[Number(row.dataset.i)]:edit)[key]=el.type==='number'?(el.value===''?(key==='cycleRest'?null:''):Number(el.value)):el.value;stash()}};
 function importOne(w,v){if(v===2)return w;if(!integer(w.rounds,1)||!integer(w.sets,1))throw Error();return {...w,cycles:w.rounds*w.sets,cycleRest:null,legacyBoundary:w.sets>1&&integer(w.setRest,0)?{every:w.rounds,rest:w.setRest}:undefined}}
 app.onchange=async e=>{if(e.target.dataset.voice){prefs['cue'+e.target.dataset.voice]=e.target.value;put('prefs',prefs);return}if(e.target.id!=='import'||!e.target.files[0])return;try{const data=JSON.parse(await e.target.files[0].text());if(![1,2].includes(data.version)||!Array.isArray(data.workouts))throw Error();const incoming=data.workouts.map(w=>importOne(w,data.version));if(!incoming.every(valid))throw Error();const merged=new Map(workouts.map(w=>[w.id,w]));for(const w of incoming){if(merged.has(w.id)&&JSON.stringify(merged.get(w.id))!==JSON.stringify(w))w.id=id();merged.set(w.id,w)}workouts=[...merged.values()];put('workouts',workouts);const p=data.preferences||{};for(const k of Object.keys(stages))if(voices.includes(p['cue'+k]))prefs['cue'+k]=p['cue'+k];for(const k of ['sound','half','count','vibrate','dark','mediaAudio'])if(typeof p[k]==='boolean')prefs[k]=p[k];if(p.theme==='Dark')prefs.dark=true;for(const [k,min,max] of [['volume',0,100],['length',120,800]])if(Number.isInteger(p[k])&&p[k]>=min&&p[k]<=max)prefs[k]=p[k];put('prefs',prefs);settings();say('Backup imported')}catch{say('Invalid Cadence backup. Check the file and try again.')}};
-function audio(){mediaAudio();try{if(!ctx||ctx.state==='closed')ctx=new (window.AudioContext||window.webkitAudioContext)();return ctx.resume().catch(()=>{})}catch{return Promise.resolve()}}
+function audio(){mediaAudio();try{if(!ctx||ctx.state==='closed'){ctx=new (window.AudioContext||window.webkitAudioContext)();ctx.onstatechange=()=>{if(ctx?.state==='interrupted'||ctx?.state==='suspended')recover()}}return ctx.resume().catch(()=>{})}catch{return Promise.resolve()}}
 let recovery=0;
+// An interrupted audio clock can stay frozen even while its state reads "running".
+function replaceAudio(){
+ const old=ctx;ctx=null;
+ if(old){old.onstatechange=null;old.close().catch(()=>{})}
+}
 async function recover(gesture=false){
  if(!session||!prefs.sound||document.hidden)return;
  const attempt=++recovery;
- if(gesture&&ctx){const old=ctx;ctx=null;old.close().catch(()=>{})}
- const activation=audio();
- await Promise.race([activation,new Promise(r=>setTimeout(r,900))]);
- if(recovery!==attempt||!session||document.hidden)return;
- const button=app.querySelector('[data-action="restore"]');
- if(ctx?.state==='running'){button?.remove();return}
- if(!button)app.querySelector('footer')?.insertAdjacentHTML('beforebegin',btn('restore','Tap to restore sound'));
+ const current=()=>attempt===recovery&&session&&prefs.sound&&!document.hidden;
+ const button=()=>app.querySelector('[data-action="restore"]');
+ const delay=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+ if(gesture)replaceAudio();
+ for(let pass=0;pass<2;pass++){
+  if(pass)replaceAudio();
+  audio();
+  const candidate=ctx,start=candidate?.currentTime;
+  await delay(350);
+  if(!current())return;
+  if(candidate&&candidate===ctx&&candidate.state==='running'&&candidate.currentTime>start){
+   button()?.remove();return;
+  }
+ }
+ if(!button())app.querySelector('footer')?.insertAdjacentHTML('beforebegin',btn('restore','Tap to restore sound'));
 }
 window.addEventListener('pageshow',()=>recover());window.addEventListener('focus',()=>recover());
 function beep(freq,double=false){if(!prefs.sound||!prefs.volume||ctx?.state!=='running')return;const d=prefs.length/1000*(double?.58:1),level=.75*(prefs.volume/100)**1.6;for(let n=0;n<(double?2:1);n++){const at=ctx.currentTime+n*(d+.075),o=ctx.createOscillator(),g=ctx.createGain();o.frequency.value=freq;g.gain.setValueAtTime(0,at);g.gain.linearRampToValueAtTime(level,at+.018);g.gain.setValueAtTime(level,at+d*.62);g.gain.exponentialRampToValueAtTime(.0001,at+d);o.connect(g).connect(ctx.destination);o.start(at);o.stop(at+d+.01)}}
@@ -227,7 +240,7 @@ case 'listen':await audio();cue(b.dataset.stage);break;case 'restore':await reco
 case 'export':{const url=URL.createObjectURL(new Blob([JSON.stringify({version:2,workouts,preferences:prefs},null,2)],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download='cadence-backup.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),30000);break}
 }};
 document.addEventListener('visibilitychange',()=>{if(!document.hidden&&session){recover();tick();animate();lock();syncMovie()}});
-if(session&&valid(session.w))live();else{session=null;home()}setInterval(tick,120);
+if(session&&valid(session.w)){live();recover()}else{session=null;home()}setInterval(tick,120);
 if('serviceWorker'in navigator)navigator.serviceWorker.register('./sw.js').then(()=>navigator.serviceWorker.ready).then(()=>{offline=true;if($('#offline'))$('#offline').textContent='Ready for offline use'}).catch(()=>say('Offline setup failed. Reopen online to retry.'));
 
 </script></body></html>
