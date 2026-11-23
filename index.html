@@ -7,6 +7,11 @@
 .tabs button{display:flex;align-items:center;gap:7px;border:0;background:transparent}.tabs [aria-current]{background:#dbe5d2;color:#273229}.tabs svg{width:19px;height:19px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round}
 .calendar{padding-inline:12px}.calendar h1{font-size:clamp(26px,7vw,40px)}.monthNav{display:flex;gap:3px}.monthNav button{font-size:24px;padding:0}.week,.monthGrid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr))}.week span{text-align:center;font-size:12px;padding:6px 0}.monthGrid{overflow:hidden;border:1px solid var(--edge);border-radius:16px;background:var(--edge);gap:1px}.day,.outside{min-width:0;min-height:79px;background:var(--card)}.outside{background:var(--bg)}.day[data-selected=true]{box-shadow:inset 0 0 0 2px #879783}.day button{display:block;min-width:0;width:100%;border:0}.day .number{padding:4px 0;min-height:32px;font-size:13px;background:transparent}.day .chip,.day .more{padding:3px 2px;min-height:22px;font-size:11px;line-height:16px;text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-radius:5px}.chip,.activity{color:#272b27}.agenda h2{margin:0}.agenda .activity{display:block;width:100%;text-align:left;margin-top:6px;overflow-wrap:anywhere}.calendar dialog{min-width:min(290px,90vw);overflow-wrap:anywhere}.finished [data-action=track]{margin-top:10px;background:#dbe5d2;color:#273229}#msg{z-index:4;pointer-events:none}@media(prefers-reduced-motion:reduce){.tabs{transition:none}}
 .monthStats{background:var(--card);border:1px solid var(--edge);border-radius:16px;padding:11px 15px;margin-bottom:10px}.monthStats>div{display:flex;align-items:baseline;justify-content:space-between;gap:10px;padding:3px 0;flex-wrap:wrap}.monthStats strong{font:24px Georgia,serif}.monthStats span{font-size:14px;font-variant-numeric:tabular-nums}.monthStats>small{display:block;margin-top:5px}.calendar dialog{max-height:88svh;overflow:auto}.calendar fieldset{border:0;padding:0;margin:8px 0}.calendar legend{padding:0;font-size:15px}.calendar fieldset label{margin:2px 0 8px}
+@media(prefers-reduced-motion:no-preference){
+ .tabs{transition:transform .32s cubic-bezier(.22,.68,.2,1)}
+ .tabs.arriving{animation:tabs-arrive .36s cubic-bezier(.22,.68,.2,1)}
+ @keyframes tabs-arrive{from{transform:translate(-50%,calc(100% + 20px + env(safe-area-inset-bottom)))}to{transform:translate(-50%,0)}}
+}
 </style></head><body><main id="app"></main><div id="msg" role="status"></div><video id="video" playsinline muted aria-hidden="true"></video><script type="module">
 const $=s=>document.querySelector(s),app=$('#app'),id=()=>crypto.randomUUID();
 const safe=t=>String(t).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -27,8 +32,9 @@ let session=await get('session'),draft=await get('draft'),edit,quick=false,view=
 function integer(v,min){return Number.isSafeInteger(v)&&v>=min&&v<=86400}
 function valid(w){return w&&typeof w.id==='string'&&typeof w.name==='string'&&w.name.trim()&&integer(w.prep,0)&&integer(w.cycles,1)&&(w.cycleRest===null||integer(w.cycleRest,0))&&Array.isArray(w.exercises)&&w.exercises.length&&w.cycles*w.exercises.length<=100000&&w.exercises.every(e=>e&&typeof e.name==='string'&&e.name.trim()&&integer(e.work,1)&&integer(e.rest,0))}
 function sequence(w){const a=[];let time=0;function add(phase,sec,i,c,next){if(sec)a.push({phase,start:time,end:time+=sec,i,c,next})}add('Prepare',w.prep,0,1,w.exercises[0].name);for(let c=1;c<=w.cycles;c++)w.exercises.forEach((e,i)=>{const edge=i===w.exercises.length-1,done=edge&&c===w.cycles,next=done?'Finished':w.exercises[(i+1)%w.exercises.length].name;add('Work',e.work,i,c,next);if(!done)add('Rest',edge?(w.cycleRest??(w.legacyBoundary&&c%w.legacyBoundary.every===0&&integer(w.legacyBoundary.rest,0)?w.legacyBoundary.rest:e.rest)):e.rest,i,c,next)});return a}
-function screen(s){view=s;document.body.className=prefs.dark?'dark':'';app.className='';window.scrollTo(0,0)}
-function home(){if(view==='editor'&&history.state?.cadenceEditor)history.back();screen('home');app.className='library';app.innerHTML='<div class="row"><h1>Workouts</h1>'+btn('settings','Settings')+'</div>'+btn('new','＋ Create workout','create')+'<h2>Your workouts</h2>'+(draft?btn('draft','Continue draft · '+safe(draft.name||'Untitled')):'')+workouts.map((w,i)=>'<article class="panel workout" style="background:'+cardColors[Object.hasOwn(cardColors,w.color)?w.color:'Cream']+'" data-i="'+i+'"><div class="row"><div><h3>'+safe(w.name)+'</h3><small>'+w.exercises.length+' exercises · '+w.cycles+' cycles · <span class="duration">'+fmt(sequence(w).at(-1).end)+' total</span></small>'+(w.notes?'<small class="notes">'+safe(w.notes)+'</small>':'')+'</div><div class="buttons">'+btn('menu','⋯','','aria-label="Workout options"')+btn('start',icon('start'),'play','aria-label="Start '+safe(w.name)+'"')+'</div></div>'+(openMenu===w.id?'<div class="buttons">'+btn('edit','Edit')+btn('raise','↑ Move up','',i===0?'disabled':'')+btn('lower','↓ Move down','',i===workouts.length-1?'disabled':'')+btn('copy','Duplicate')+btn('delete','Delete')+'</div>':'')+'</article>').join('')+navigation('home')}
+let enteringView=false;
+function screen(s){enteringView=view!==s;view=s;document.body.className=prefs.dark?'dark':'';app.className='';window.scrollTo(0,0)}
+function home(){if(view==='editor'&&history.state?.cadenceEditor)history.back();screen('home');app.className='library';app.innerHTML='<div class="row"><h1>Workouts</h1>'+btn('settings','Settings')+'</div>'+btn('new','＋ Create workout','create')+'<h2>Your workouts</h2>'+(draft?btn('draft','Continue draft · '+safe(draft.name||'Untitled')):'')+workouts.map((w,i)=>'<article class="panel workout" style="background:'+cardColors[Object.hasOwn(cardColors,w.color)?w.color:'Cream']+'" data-i="'+i+'"><div class="row"><div><h3>'+safe(w.name)+'</h3><small>'+w.exercises.length+' exercises · '+w.cycles+' cycles · <span class="duration">'+fmt(sequence(w).at(-1).end)+' total</span></small>'+(w.notes?'<small class="notes">'+safe(w.notes)+'</small>':'')+'</div><div class="buttons">'+btn('menu','⋯','','aria-label="Workout options"')+btn('start',icon('start'),'play','aria-label="Start '+safe(w.name)+'"')+'</div></div>'+(openMenu===w.id?'<div class="buttons">'+btn('edit','Edit')+btn('trackSaved','Track')+btn('raise','↑ Move up','',i===0?'disabled':'')+btn('lower','↓ Move down','',i===workouts.length-1?'disabled':'')+btn('copy','Duplicate')+btn('delete','Delete')+'</div>':'')+'</article>').join('')+navigation('home')}
 const field=(label,key,value,type='number')=>'<label>'+label+'<input data-key="'+key+'" type="'+type+'" value="'+safe(value??'')+'"></label>';
 let editBaseline='';
 const dirty=()=>view==='editor'&&!quick&&JSON.stringify(edit)!==editBaseline;
@@ -108,7 +114,7 @@ async function changeEntries(change){
 function mergeEntries(items){return changeEntries(old=>[...new Map([...items,...old].map(e=>[e.id,e])).values()])}
 const navIcons={home:'M3 6h18M3 12h18M3 18h12',calendar:'M4 5h16v16H4z M4 10h16 M8 3v4 M16 3v4'};
 function navigation(active){
- return '<nav class="tabs" aria-label="Main navigation">'+Object.entries(navIcons).map(([key,path])=>btn(key,'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="'+path+'"/></svg>'+(key==='home'?'Workouts':'Calendar'),'',active===key?'aria-current="page"':'')).join('')+'</nav>';
+ return '<nav class="tabs'+(enteringView?' arriving':'')+'" aria-label="Main navigation">'+Object.entries(navIcons).map(([key,path])=>btn(key,'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="'+path+'"/></svg>'+(key==='home'?'Workouts':'Calendar'),'',active===key?'aria-current="page"':'')).join('')+'</nav>';
 }
 let scrollMark=0;
 window.addEventListener('scroll',()=>{
@@ -331,6 +337,17 @@ case 'stay':app.querySelector('dialog')?.close();break;
 case 'discard':draft=null;put('draft',null);home();break;
 case 'pickColour':edit.color=b.dataset.color;stash();const picker=b.closest('.picker');picker.outerHTML=colourPicker();app.querySelector('.picker summary').focus();break;
 case 'settings':settings();break;
+case 'trackSaved':{
+ if(!w||b.disabled)break;
+ b.disabled=true;
+ const entry={id:id(),day:selectedDay,name:w.name,kind:'Timer',color:Object.hasOwn(cardColors,w.color)?w.color:'Cream',seconds:sequence(w).at(-1).end};
+ try{
+  await mergeEntries([entry]);
+  b.textContent='Tracked';
+  say('Tracked '+entry.name+' for '+parseDay(entry.day).toLocaleDateString('en',{month:'short',day:'numeric',year:'numeric'}));
+ }catch{b.disabled=false;say('Could not save this workout. Try again.')}
+ break;
+}
 case 'menu':openMenu=openMenu===w.id?'':w.id;home();break;
 case 'start':begin(w);break;
 case 'raise':case 'lower':{const j=i+(cmd==='raise'?-1:1);if(j>=0&&j<workouts.length){[workouts[i],workouts[j]]=[workouts[j],workouts[i]];put('workouts',workouts);home()}break}case 'copy':workouts.push({...structuredClone(w),name:w.name+' copy',id:id()});put('workouts',workouts);openMenu='';home();break;
