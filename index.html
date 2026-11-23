@@ -6,6 +6,7 @@
 .tabs.away:not(:focus-visible):not(:has(:focus-visible)){transform:translate(-50%,calc(100% + 20px + env(safe-area-inset-bottom)))}
 .tabs button{display:flex;align-items:center;gap:7px;border:0;background:transparent}.tabs [aria-current]{background:#dbe5d2;color:#273229}.tabs svg{width:19px;height:19px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round}
 .calendar{padding-inline:12px}.calendar h1{font-size:clamp(26px,7vw,40px)}.monthNav{display:flex;gap:3px}.monthNav button{font-size:24px;padding:0}.week,.monthGrid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr))}.week span{text-align:center;font-size:12px;padding:6px 0}.monthGrid{overflow:hidden;border:1px solid var(--edge);border-radius:16px;background:var(--edge);gap:1px}.day,.outside{min-width:0;min-height:79px;background:var(--card)}.outside{background:var(--bg)}.day[data-selected=true]{box-shadow:inset 0 0 0 2px #879783}.day button{display:block;min-width:0;width:100%;border:0}.day .number{padding:4px 0;min-height:32px;font-size:13px;background:transparent}.day .chip,.day .more{padding:3px 2px;min-height:22px;font-size:11px;line-height:16px;text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-radius:5px}.chip,.activity{color:#272b27}.agenda h2{margin:0}.agenda .activity{display:block;width:100%;text-align:left;margin-top:6px;overflow-wrap:anywhere}.calendar dialog{min-width:min(290px,90vw);overflow-wrap:anywhere}.finished [data-action=track]{margin-top:10px;background:#dbe5d2;color:#273229}#msg{z-index:4;pointer-events:none}@media(prefers-reduced-motion:reduce){.tabs{transition:none}}
+.monthStats{background:var(--card);border:1px solid var(--edge);border-radius:16px;padding:11px 15px;margin-bottom:10px}.monthStats>div{display:flex;align-items:baseline;justify-content:space-between;gap:10px;padding:3px 0;flex-wrap:wrap}.monthStats strong{font:24px Georgia,serif}.monthStats span{font-size:14px;font-variant-numeric:tabular-nums}.monthStats>small{display:block;margin-top:5px}.calendar dialog{max-height:88svh;overflow:auto}.calendar fieldset{border:0;padding:0;margin:8px 0}.calendar legend{padding:0;font-size:15px}.calendar fieldset label{margin:2px 0 8px}
 </style></head><body><main id="app"></main><div id="msg" role="status"></div><video id="video" playsinline muted aria-hidden="true"></video><script type="module">
 const $=s=>document.querySelector(s),app=$('#app'),id=()=>crypto.randomUUID();
 const safe=t=>String(t).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -57,7 +58,45 @@ const parseDay=s=>new Date(s+'T12:00:00');
 const validDay=s=>typeof s==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(s)&&localDay(parseDay(s))===s;
 let selectedDay=localDay(new Date()),month=parseDay(selectedDay);
 const activities={'Swimming':'Sky','Running':'Sage','Misc workout':'Lilac'};
-function validEntry(e){return e&&typeof e.id==='string'&&e.id&&typeof e.name==='string'&&e.name.trim()&&validDay(e.day)&&Object.hasOwn(cardColors,e.color)}
+function measurementFields(kind){
+ const misc=kind==='Misc workout',unit=kind==='Swimming'?'m':'km';
+ return (misc?'<label>Workout name<input id="activityName" maxlength="120" placeholder="Misc workout"></label>':'')+
+ '<label>Distance ('+unit+')'+(misc?' · optional':'')+'<input id="activityDistance" type="number" inputmode="decimal" min="'+(unit==='m'?1:0.001)+'" max="'+(unit==='m'?1000000:1000)+'" step="'+(unit==='m'?1:0.001)+'" '+(misc?'':'required')+'></label>'+
+ '<fieldset><legend>Duration'+(misc?' · optional':'')+'</legend><div class="grid"><label>Minutes<input id="activityMinutes" type="number" inputmode="numeric" min="0" max="10080" step="1" placeholder="0"></label><label>Seconds<input id="activitySeconds" type="number" inputmode="numeric" min="0" max="59" step="1" placeholder="00"></label></div></fieldset>';
+}
+function readActivity(){
+ const kind=$('#activityType').value,day=$('#activityDay').value;
+ for(const input of app.querySelectorAll('dialog input'))if(!input.reportValidity())return;
+ if(!validDay(day))return;
+ const distance=$('#activityDistance'),mins=$('#activityMinutes'),secs=$('#activitySeconds');
+ const seconds=Number(mins.value)*60+Number(secs.value);
+ if(!seconds&&(kind!=='Misc workout'||mins.value||secs.value)){
+  mins.setCustomValidity('Enter a duration greater than zero.');mins.reportValidity();mins.setCustomValidity('');return;
+ }
+ const name=$('#activityName')?.value.trim()||kind;
+ return {id:id(),day,name,kind,color:activities[kind],...(distance.value?{meters:Math.round(Number(distance.value)*(kind==='Swimming'?1:1000))}:{}),...(seconds?{seconds}:{})};
+}
+const km=m=>(m/1000).toLocaleString('en',{maximumFractionDigits:3})+' km';
+function duration(s){
+ const h=Math.floor(s/3600),m=Math.floor(s/60)%60,sec=s%60;
+ return [h&&h+'h',m&&m+'m',sec&&sec+'s'].filter(Boolean).join(' ')||'0m';
+}
+function monthSummary(){
+ const logs=entries.filter(e=>e.day.startsWith(localDay(month).slice(0,7)+'-'));
+ const total=(items,key)=>items.reduce((n,e)=>n+(e[key]??0),0);
+ const runs=logs.filter(e=>e.kind==='Running'),swims=logs.filter(e=>e.kind==='Swimming'||(!e.kind&&e.name==='Swimming'&&e.color===activities.Swimming));
+ const timed=runs.filter(e=>e.seconds&&e.meters),meters=total(timed,'meters');
+ const pace=meters?fmt(Math.round(total(timed,'seconds')*1000/meters)).replace(/^0(?=\d:)/,'')+' /km':'—';
+ return '<section class="monthStats" aria-label="Monthly totals"><div><small>Total workout time</small><strong>'+duration(total(logs,'seconds'))+'</strong></div>'+
+ '<div><small>Running</small><span>'+km(total(runs,'meters'))+' · '+duration(total(runs,'seconds'))+' · '+pace+' avg pace</span></div>'+
+ (swims.length?'<div><small>Swimming</small><span>'+(swims.some(e=>e.meters)?total(swims,'meters').toLocaleString('en')+' m':'Distance unrecorded')+'</span></div>':'')+
+ (logs.some(e=>!e.kind&&!('seconds' in e))?'<small>Earlier entries have no recorded measurements.</small>':'')+'</section>';
+}
+function entryMetrics(e){
+ const parts=[];if(e.meters)parts.push(e.kind==='Swimming'?e.meters.toLocaleString('en')+' m':km(e.meters));if(e.seconds!=null)parts.push(duration(e.seconds));
+ return parts.length?'<p>'+parts.join(' · ')+'</p>':'';
+}
+function validEntry(e){return e&&typeof e.id==='string'&&e.id&&typeof e.name==='string'&&e.name.trim()&&validDay(e.day)&&Object.hasOwn(cardColors,e.color)&&(e.kind===undefined||e.kind==='Timer'||Object.hasOwn(activities,e.kind))&&[e.meters,e.seconds].every(n=>n===undefined||(Number.isSafeInteger(n)&&n>=0&&n<=1e10))}
 async function changeEntries(change){
  return new Promise((resolve,reject)=>{
   const tx=db.transaction('data','readwrite'),store=tx.objectStore('data'),read=store.get('calendar');
@@ -90,7 +129,7 @@ function calendar(){
    (group.length>2?btn('day','+'+(group.length-2),'more','data-day="'+day+'" aria-label="Show all activities on '+day+'"'):'')+'</div>';
  }
  const selected=byDay.get(selectedDay)??[];
- app.innerHTML='<div class="row"><h1>'+month.toLocaleDateString('en',{month:'long',year:'numeric'})+'</h1><div class="monthNav">'+btn('monthBack','‹','','aria-label="Previous month"')+btn('monthNext','›','','aria-label="Next month"')+'</div></div><div class="week">'+['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(d=>'<span>'+d+'</span>').join('')+'</div><div class="monthGrid">'+cells+'</div><section class="panel agenda"><div class="row"><h2>'+parseDay(selectedDay).toLocaleDateString('en',{day:'numeric',month:'short'})+'</h2>'+btn('addActivity','＋ Activity')+'</div>'+
+ app.innerHTML='<div class="row"><h1>'+month.toLocaleDateString('en',{month:'long',year:'numeric'})+'</h1><div class="monthNav">'+btn('monthBack','‹','','aria-label="Previous month"')+btn('monthNext','›','','aria-label="Next month"')+'</div></div>'+monthSummary()+'<div class="week">'+['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(d=>'<span>'+d+'</span>').join('')+'</div><div class="monthGrid">'+cells+'</div><section class="panel agenda"><div class="row"><h2>'+parseDay(selectedDay).toLocaleDateString('en',{day:'numeric',month:'short'})+'</h2>'+btn('addActivity','＋ Activity')+'</div>'+
  (selected.length?selected.map(e=>btn('entry',safe(e.name),'activity','data-id="'+safe(e.id)+'" style="background:'+cardColors[e.color]+'"')).join(''):'<small>No workouts tracked</small>')+'</section>'+navigation('calendar');
 }
 function calendarDialog(content){
@@ -101,10 +140,10 @@ async function calendarAction(cmd,b){
  case 'calendar':entries=await get('calendar')??[];calendar();break;
  case 'monthBack':case 'monthNext':month=new Date(month.getFullYear(),month.getMonth()+(cmd==='monthNext'?1:-1),1);selectedDay=localDay(month);calendar();break;
  case 'day':selectedDay=b.dataset.day;calendar();break;
- case 'entry':{const e=entries.find(x=>x.id===b.dataset.id);if(e)calendarDialog('<h2 id="calTitle">'+safe(e.name)+'</h2><p>'+parseDay(e.day).toLocaleDateString('en',{dateStyle:'full'})+'</p><div class="buttons">'+btn('stay','Close')+btn('removeEntry','Delete entry','','data-id="'+safe(e.id)+'"')+'</div>');break}
+ case 'entry':{const e=entries.find(x=>x.id===b.dataset.id);if(e)calendarDialog('<h2 id="calTitle">'+safe(e.name)+'</h2><p>'+parseDay(e.day).toLocaleDateString('en',{dateStyle:'full'})+'</p>'+entryMetrics(e)+'<div class="buttons">'+btn('stay','Close')+btn('removeEntry','Delete entry','','data-id="'+safe(e.id)+'"')+'</div>');break}
  case 'removeEntry':await changeEntries(old=>old.filter(e=>e.id!==b.dataset.id));calendar();say('Entry deleted');break;
- case 'addActivity':calendarDialog('<h2 id="calTitle">Log activity</h2><label>Activity<select id="activityType">'+Object.keys(activities).map(a=>'<option>'+a+'</option>').join('')+'</select></label><label>Date<input type="date" id="activityDay" value="'+selectedDay+'" required></label><div class="buttons">'+btn('stay','Cancel')+btn('logActivity','Add to calendar')+'</div>');break;
- case 'logActivity':{const day=$('#activityDay').value,name=$('#activityType').value;if(!validDay(day)){say('Choose a valid date');return}b.disabled=true;await mergeEntries([{id:id(),day,name,color:activities[name]}]);selectedDay=day;month=parseDay(day);calendar();break}
+ case 'addActivity':calendarDialog('<h2 id="calTitle">Log activity</h2><label>Activity<select id="activityType">'+Object.keys(activities).map(a=>'<option>'+a+'</option>').join('')+'</select></label><label>Date<input type="date" id="activityDay" value="'+selectedDay+'" required></label><div id="measurements">'+measurementFields('Swimming')+'</div><div class="buttons">'+btn('stay','Cancel')+btn('logActivity','Add to calendar')+'</div>');break;
+ case 'logActivity':{const entry=readActivity();if(!entry)return;b.disabled=true;await mergeEntries([entry]);selectedDay=entry.day;month=parseDay(entry.day);calendar();break}
  case 'track':if(completion){b.disabled=true;await mergeEntries([completion]);b.textContent='Workout tracked';say('Added to calendar')}break;
  default:return false;
  }
@@ -118,7 +157,7 @@ function cueSettings(){return Object.entries(stages).map(([k,v])=>'<div class="c
 function settings(){screen('settings');app.innerHTML=btn('home','‹ Workouts')+'<h1>Settings</h1><section class="panel"><h2>Sound & cues</h2>'+[['volume','Beep volume',0,100,1,'%'],['length','Beep length',120,800,10,' ms']].map(([k,label,min,max,step,u])=>'<label>'+label+' · <output id="'+k+'">'+prefs[k]+u+'</output><input type="range" data-pref="'+k+'" min="'+min+'" max="'+max+'" step="'+step+'" value="'+prefs[k]+'"></label>').join('')+btn('preview','Preview sound')+[['sound','Sounds'],...('audioSession' in navigator?[['mediaAudio','Play cues in Silent mode (may interrupt other audio)']]:[]),['half','Halfway double beep during work'],['count','Final three countdown beeps'],['vibrate','Vibration where supported'],['dark','Dark workout library']].map(([k,l])=>'<label><input type="checkbox" data-pref="'+k+'" '+(prefs[k]?'checked':'')+'> '+l+'</label>').join('')+cueSettings()+'</section>'+'<section class="panel"><h2>Backup</h2><p>Browser storage can be cleared. Save a copy of your workouts and preferences.</p>'+btn('export','Export JSON')+'<label>Import Cadence backup<input id="import" type="file" accept=".json,application/json"></label></section><small id="offline">'+(offline?'Ready for offline use':'Preparing offline access')+'</small>'}
 app.oninput=e=>{const el=e.target,key=el.dataset.key,k=el.dataset.pref;if(k){prefs[k]=el.type==='checkbox'?el.checked:Number(el.value);put('prefs',prefs);if($('#'+k))$('#'+k).textContent=prefs[k]+(k==='volume'?'%':' ms');if(k==='mediaAudio')mediaAudio();if(k==='dark')settings()}if(key){const row=el.closest('[data-i]');(row?edit.exercises[Number(row.dataset.i)]:edit)[key]=el.type==='number'?(el.value===''?(key==='cycleRest'?null:''):Number(el.value)):el.value;stash()}};
 function importOne(w,v){if(v===2)return w;if(!integer(w.rounds,1)||!integer(w.sets,1))throw Error();return {...w,cycles:w.rounds*w.sets,cycleRest:null,legacyBoundary:w.sets>1&&integer(w.setRest,0)?{every:w.rounds,rest:w.setRest}:undefined}}
-app.onchange=async e=>{if(e.target.dataset.voice){prefs['cue'+e.target.dataset.voice]=e.target.value;put('prefs',prefs);return}if(e.target.id!=='import'||!e.target.files[0])return;try{const data=JSON.parse(await e.target.files[0].text());if(![1,2].includes(data.version)||!Array.isArray(data.workouts))throw Error();const logs=data.calendar??[];if(!Array.isArray(logs)||!logs.every(validEntry))throw Error();const incoming=data.workouts.map(w=>importOne(w,data.version));if(!incoming.every(valid))throw Error();await mergeEntries(logs);const merged=new Map(workouts.map(w=>[w.id,w]));for(const w of incoming){if(merged.has(w.id)&&JSON.stringify(merged.get(w.id))!==JSON.stringify(w))w.id=id();merged.set(w.id,w)}workouts=[...merged.values()];put('workouts',workouts);const p=data.preferences||{};for(const k of Object.keys(stages))if(voices.includes(p['cue'+k]))prefs['cue'+k]=p['cue'+k];for(const k of ['sound','half','count','vibrate','dark','mediaAudio'])if(typeof p[k]==='boolean')prefs[k]=p[k];if(p.theme==='Dark')prefs.dark=true;for(const [k,min,max] of [['volume',0,100],['length',120,800]])if(Number.isInteger(p[k])&&p[k]>=min&&p[k]<=max)prefs[k]=p[k];put('prefs',prefs);settings();say('Backup imported')}catch{say('Invalid Cadence backup. Check the file and try again.')}};
+app.onchange=async e=>{if(e.target.id==='activityType'){$('#measurements').innerHTML=measurementFields(e.target.value);return}if(e.target.dataset.voice){prefs['cue'+e.target.dataset.voice]=e.target.value;put('prefs',prefs);return}if(e.target.id!=='import'||!e.target.files[0])return;try{const data=JSON.parse(await e.target.files[0].text());if(![1,2].includes(data.version)||!Array.isArray(data.workouts))throw Error();const logs=data.calendar??[];if(!Array.isArray(logs)||!logs.every(validEntry))throw Error();const incoming=data.workouts.map(w=>importOne(w,data.version));if(!incoming.every(valid))throw Error();await mergeEntries(logs);const merged=new Map(workouts.map(w=>[w.id,w]));for(const w of incoming){if(merged.has(w.id)&&JSON.stringify(merged.get(w.id))!==JSON.stringify(w))w.id=id();merged.set(w.id,w)}workouts=[...merged.values()];put('workouts',workouts);const p=data.preferences||{};for(const k of Object.keys(stages))if(voices.includes(p['cue'+k]))prefs['cue'+k]=p['cue'+k];for(const k of ['sound','half','count','vibrate','dark','mediaAudio'])if(typeof p[k]==='boolean')prefs[k]=p[k];if(p.theme==='Dark')prefs.dark=true;for(const [k,min,max] of [['volume',0,100],['length',120,800]])if(Number.isInteger(p[k])&&p[k]>=min&&p[k]<=max)prefs[k]=p[k];put('prefs',prefs);settings();say('Backup imported')}catch{say('Invalid Cadence backup. Check the file and try again.')}};
 function audio(){mediaAudio();try{if(!ctx||ctx.state==='closed'){ctx=new (window.AudioContext||window.webkitAudioContext)();ctx.onstatechange=()=>{if(ctx?.state==='interrupted'||ctx?.state==='suspended')recover()}}return ctx.resume().catch(()=>{})}catch{return Promise.resolve()}}
 let recovery=0;
 // An interrupted audio clock can stay frozen even while its state reads "running".
@@ -284,7 +323,7 @@ async function float(){
   }
 }
 function finish(done){const w=session.w;
- completion=done?{id:session.logId??id(),name:w.name,color:Object.hasOwn(cardColors,w.color)?w.color:'Cream',day:localDay(new Date(Date.now()-Math.max(0,elapsed()-list.at(-1).end)*1000))}:null;
+ completion=done?{id:session.logId??id(),name:w.name,kind:'Timer',seconds:Math.max(0,Math.round(list.at(-1).end-(session.seekDelta??0))),color:Object.hasOwn(cardColors,w.color)?w.color:'Cream',day:localDay(new Date(Date.now()-Math.max(0,elapsed()-list.at(-1).end)*1000))}:null;
  session=null;persist();cancelAnimationFrame(frame);wake?.release();cleanMini();screen('done');app.className='finished';app.innerHTML='<h1>'+(done?'Workout complete':'Workout ended')+'</h1>'+btn('home','Back to workouts')+(done?btn('track','Track Workout'):'');if(done)cue('Finish')}
 app.onclick=async e=>{const b=e.target.closest('[data-action]');if(!b)return;const cmd=b.dataset.action,i=Number(b.closest('[data-i]')?.dataset.i),w=workouts[i];if(['calendar','monthBack','monthNext','day','entry','removeEntry','addActivity','logActivity','track'].includes(cmd)){try{await calendarAction(cmd,b)}catch{b.disabled=false;say('Could not save or load calendar. Please retry.')}return}switch(cmd){
 case 'home':openMenu='';if(view==='editor')askLeave();else home();break;
@@ -300,7 +339,7 @@ case 'quick':case 'new':case 'edit':case 'draft':if(draft&&['edit','new'].includ
 case 'add':case 'up':case 'down':case 'remove':{const a=edit.exercises;if(cmd==='add')a.push({...a.at(-1),name:''});else if(cmd==='remove')a.splice(i,1);else{const j=i+(cmd==='up'?-1:1);[a[i],a[j]]=[a[j],a[i]]}stash();editor();if(cmd==='add')app.querySelector('section:last-of-type input').focus();break}
 case 'begin':case 'save':app.querySelector('dialog')?.close();if(!valid(edit)){say('Enter names, positive work times and cycles, and whole-second durations.');break}if(quick){begin(edit);break}const ix=workouts.findIndex(w=>w.id===edit.id);if(ix<0)workouts.push(edit);else workouts[ix]=edit;put('workouts',workouts);draft=null;put('draft',draft);home();break;
 case 'pause':audio();if(session.since===null){session.since=Date.now();lock()}else{session.offset=elapsed();session.since=null;wake?.release()}persist();tick();animate();syncMovie();break;
-case 'skip':case 'prev':{const idx=Math.max(0,locate(elapsed())+(cmd==='skip'?1:-1));session.offset=list[idx]?.start??list.at(-1).end;if(session.since!==null)session.since=Date.now();persist();tick();animate();syncMovie();break}
+case 'skip':case 'prev':{const before=elapsed(),idx=Math.max(0,locate(before)+(cmd==='skip'?1:-1));session.offset=list[idx]?.start??list.at(-1).end;session.seekDelta=(session.seekDelta??0)+session.offset-before;if(session.since!==null)session.since=Date.now();persist();tick();animate();syncMovie();break}
 case 'end':if(confirm('End this workout?'))finish(false);break;
 case 'float':await float();break;
 case 'listen':await audio();cue(b.dataset.stage);break;case 'restore':await recover(true);break;case 'preview':await audio();if(!prefs.sound)say('Enable sounds to preview.');else beep(660);break;
