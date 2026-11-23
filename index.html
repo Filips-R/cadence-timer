@@ -65,6 +65,11 @@ const parseDay=s=>new Date(s+'T12:00:00');
 const validDay=s=>typeof s==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(s)&&localDay(parseDay(s))===s;
 let selectedDay=localDay(new Date()),month=parseDay(selectedDay);
 const activities={'Swimming':'Sky','Running':'Sage','Misc workout':'Lilac'};
+const calendarColors={Running:'#c23e43',Swimming:'#275787','Misc workout':'#51555b'};
+function entryStyle(e){
+ const kind=e.kind??(Object.hasOwn(activities,e.name)&&activities[e.name]===e.color?e.name:null);
+ return Object.hasOwn(calendarColors,kind)?'background:'+calendarColors[kind]+';color:#fff':'background:'+cardColors[e.color];
+}
 function measurementFields(kind){
  const misc=kind==='Misc workout',unit=kind==='Swimming'?'m':'km';
  return (misc?'<label>Workout name<input id="activityName" maxlength="120" placeholder="Misc workout"></label>':'')+
@@ -132,12 +137,12 @@ function calendar(){
   const n=i-offset+1;if(n<1||n>days){cells+='<div class="outside"></div>';continue}
   const day=localDay(new Date(y,m,n)),group=byDay.get(day)??[];
   cells+='<div class="day" data-selected="'+(day===selectedDay)+'">'+btn('day',n,'number','data-day="'+day+'" aria-label="Select '+day+'"')+
-   group.slice(0,3).map(e=>btn('entry',safe(e.name),'chip','data-id="'+safe(e.id)+'" style="background:'+cardColors[e.color]+'"')).join('')+
+   group.slice(0,3).map(e=>btn('entry',safe(e.name),'chip','data-id="'+safe(e.id)+'" style="'+entryStyle(e)+'"')).join('')+
    (group.length>3?btn('day','+'+(group.length-3),'more','data-day="'+day+'" aria-label="Show all activities on '+day+'"'):'')+'</div>';
  }
  const selected=byDay.get(selectedDay)??[];
  app.innerHTML='<div class="row"><h1>'+month.toLocaleDateString('en',{month:'long',year:'numeric'})+'</h1><div class="monthNav">'+btn('monthBack','‹','','aria-label="Previous month"')+btn('monthNext','›','','aria-label="Next month"')+'</div></div>'+monthSummary()+'<div class="week">'+['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(d=>'<span>'+d+'</span>').join('')+'</div><div class="monthGrid">'+cells+'</div><section class="panel agenda"><div class="row"><h2>'+parseDay(selectedDay).toLocaleDateString('en',{day:'numeric',month:'short'})+'</h2>'+btn('addActivity','＋ Activity')+'</div>'+
- (selected.length?selected.map(e=>btn('entry',safe(e.name),'activity','data-id="'+safe(e.id)+'" style="background:'+cardColors[e.color]+'"')).join(''):'<small>No workouts tracked</small>')+'</section>'+navigation('calendar');
+ (selected.length?selected.map(e=>btn('entry',safe(e.name),'activity','data-id="'+safe(e.id)+'" style="'+entryStyle(e)+'"')).join(''):'<small>No workouts tracked</small>')+'</section>'+navigation('calendar');
 }
 function calendarDialog(content){
  app.querySelector('dialog')?.remove();app.insertAdjacentHTML('beforeend','<dialog aria-labelledby="calTitle">'+content+'</dialog>');app.querySelector('dialog').showModal();
